@@ -1,0 +1,31 @@
+{{- if .Values.exampleWorkload.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.exampleWorkload.name }}
+  namespace: {{ .Values.namespace }}
+  annotations:
+    azure.workload.identity/client-id: "{{ .Values.workloadIdentity.clientId }}"  
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: {{ .Values.exampleWorkload.name }} }
+  template:
+    metadata:
+      labels: { app: {{ .Values.exampleWorkload.name }} }
+    spec:
+      serviceAccountName: {{ .Values.namespace }}-sa
+      nodeSelector:
+        kubernetes.io/os: linux
+      containers:
+      - name: app
+        image: {{ .Values.exampleWorkload.image }}
+        command: ["/bin/sh","-c","while true; do date >> {{ .Values.exampleWorkload.mountPath }}/outfile; sleep 5; done"]
+        volumeMounts:
+        - name: vol
+          mountPath: {{ .Values.exampleWorkload.mountPath }}
+      volumes:
+      - name: vol
+        persistentVolumeClaim:
+          claimName: {{ .Values.pvc.name }}
+{{- end }}

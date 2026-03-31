@@ -1,0 +1,38 @@
+namespace: apps-team-1
+
+workloadIdentity:
+  enabled: true
+  clientId: ""     # UAMI clientId (required for your per-namespace identity model)
+  tenantId: ""     # not strictly needed for this storage flow, but often carried for consistency
+
+azureFiles:
+  storageClass:
+    name: azurefile-team-a-wi
+    resourceGroup: ""   # optional (AKS doc: defaults to node RG if omitted) [1](https://learn.microsoft.com/en-us/azure/aks/create-volume-azure-files)
+    storageAccount: ""  # optional (AKS doc: if omitted, driver can create a new account) [1](https://learn.microsoft.com/en-us/azure/aks/create-volume-azure-files)
+    mountWithWorkloadIdentityToken: true # AKS doc shows this flag [1](https://learn.microsoft.com/en-us/azure/aks/create-volume-azure-files)
+    reclaimPolicy: Delete
+    volumeBindingMode: Immediate
+    allowVolumeExpansion: true
+    mountOptions:
+      - dir_mode=0755
+      - file_mode=0755
+      - uid=1000
+      - gid=1000
+      - mfsymlinks
+      - cache=strict
+      - nosharesock
+      - actimeo=30
+      - nobrl
+
+pvc:
+  enabled: true
+  name: data
+  size: 100Gi
+  accessModes: ["ReadWriteMany"]
+
+exampleWorkload:
+  enabled: true
+  name: smoke
+  image: mcr.microsoft.com/oss/nginx/nginx:1.17.3-alpine
+  mountPath: /mnt/azurefile
