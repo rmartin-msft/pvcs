@@ -14,16 +14,17 @@
     az storage account update   --name stscarlettappsteam1   --resource-group rg-aks-scarlett-snail   --enable-smb-oauth true
     ```
 
-2. Update the parameters for your cluster, and run  the shell script `azure-phase.sh`
+2. Update the parameters for your cluster, and run  the shell script `azure-phase.sh`. The script will complete and output the parameters to include in the helm chart.
 
-
-    ✅ Azure phase complete
-
-    Use the following values in Helm:
-    --------------------------------
-    workloadIdentity.clientId: <_clientId_>
-    namespace: TeamNamespace
-    serviceAccount: TeamServiceAccount
+>```
+>    ✅ Azure phase complete
+>
+>    Use the following values in Helm:
+>    --------------------------------
+>    workloadIdentity.clientId: <_clientId_>
+>    namespace: TeamNamespace
+>    serviceAccount: TeamServiceAccount
+>```
 
 3. Install the helm chart for each namespace - the chart will deploy a smoketest pod in the namespace with a pvc.
 
