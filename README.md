@@ -7,6 +7,13 @@
     az storage account create -g rg-aks-scarlett-snail --name stscarlettappsteam1 --location ukwest --kind "FileStorage" --sku "StandardV2_LRS"
     az storage account create -g rg-aks-scarlett-snail --name stscarlettappsteam2 --location ukwest --kind "FileStorage" --sku "StandardV2_LRS"
     ```
+
+1. Enable SMB Managed Identity Authentication on the storage account
+
+    ```
+    az storage account update   --name stscarlettappsteam1   --resource-group rg-aks-scarlett-snail   --enable-smb-oauth true
+    ```
+
 2. Update the parameters for your cluster, and run  the shell script `azure-phase.sh`
 
 
