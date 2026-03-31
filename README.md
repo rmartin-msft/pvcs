@@ -8,13 +8,7 @@
     az storage account create -g rg-aks-scarlett-snail --name stscarlettappsteam2 --location ukwest --kind "FileStorage" --sku "StandardV2_LRS"
     ```
 
-1. Enable SMB Managed Identity Authentication on the storage account
-
-    ```
-    az storage account update   --name stscarlettappsteam1   --resource-group rg-aks-scarlett-snail   --enable-smb-oauth true
-    ```
-
-2. Update the parameters for your cluster, and run  the shell script `azure-phase.sh`. The script will complete and output the parameters to include in the helm chart.
+2. Update the parameters for your cluster in the json file, and run  the shell script `azure-phase.sh apps1.json`. The script will complete the Azure Configuration and output the parameters for the helm chart which deploys the storage claim and a smoke test container.
 
 >```
 >    ✅ Azure phase complete
