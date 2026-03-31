@@ -1,0 +1,10 @@
+{
+    "aks_rg": "rg-aks-scarlett-snail",
+    "aks_name": "scarlettsnail",
+    "k8s_namespace": "apps-team-1",
+    "k8s_serviceaccount": "apps-team-1-sa",
+    "identity_name": "mi-scarlett-apps-1",
+    "identity_rg": "rg-aks-scarlett-snail",
+    "storage_account_name": "stscarlettappsteam1",
+    "storage_account_rg": "rg-aks-scarlett-snail"
+}

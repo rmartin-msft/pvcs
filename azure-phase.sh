@@ -22,6 +22,28 @@ STORAGE_ACCOUNT_NAME="stscarlettappsteam1"
 STORAGE_ACCOUNT_RG="rg-aks-scarlett-snail"
 
 ############################################
+# LOAD CONFIG FROM FILE IF PROVIDED
+############################################
+
+if [[ $# -gt 0 ]]; then
+    CONFIG_FILE="$1"
+    if [[ ! -f "${CONFIG_FILE}" ]]; then
+        echo "ERROR: Config file not found: ${CONFIG_FILE}"
+        exit 1
+    fi
+    
+    AKS_RG="$(jq -r .aks_rg "${CONFIG_FILE}")"
+    AKS_NAME="$(jq -r .aks_name "${CONFIG_FILE}")"
+    K8S_NAMESPACE="$(jq -r .k8s_namespace "${CONFIG_FILE}")"
+    K8S_SERVICEACCOUNT="$(jq -r .k8s_serviceaccount "${CONFIG_FILE}")"
+    IDENTITY_NAME="$(jq -r .identity_name "${CONFIG_FILE}")"
+    IDENTITY_RG="$(jq -r .identity_rg "${CONFIG_FILE}")"
+    STORAGE_ACCOUNT_NAME="$(jq -r .storage_account_name "${CONFIG_FILE}")"
+    STORAGE_ACCOUNT_RG="$(jq -r .storage_account_rg "${CONFIG_FILE}")"
+fi
+
+
+############################################
 # DERIVED / CONSTANTS
 ############################################
 
@@ -100,22 +122,52 @@ else
 fi
 
 ############################################
+# 4. GET THE CLUSTER PRINCIPAL ID
+############################################
+
+echo "Looking up the AKS Cluster's principal Id"
+
+CLUSTER_PRINCIPAL=$(az aks show --name ${AKS_NAME} --resource-group ${AKS_RG} --query identity.principalId --output tsv)
+
+echo "Cluster MI is : ${CLUSTER_PRINCIPAL}"
+
+############################################
 # 4. ASSIGN RBAC ON STORAGE ACCOUNT
 ############################################
 
-echo "Assigning Storage Account Contributor role..."
+echo "Assigning Storage File Data SMB MI Admin role..."
 
 STORAGE_SCOPE="/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${STORAGE_ACCOUNT_RG}/providers/Microsoft.Storage/storageAccounts/${STORAGE_ACCOUNT_NAME}"
 
 EXISTING_ROLE="$(az role assignment list \
   --assignee-object-id "${PRINCIPAL_ID}" \
   --scope "${STORAGE_SCOPE}" \
-  --query "[?roleDefinitionName=='Storage Account Contributor'].id" \
+  --query "[?roleDefinitionName=='Storage File Data SMB MI Admin'].id" \
   -o tsv)"
 
 if [[ -z "${EXISTING_ROLE}" ]]; then
   az role assignment create \
     --assignee-object-id "${PRINCIPAL_ID}" \
+    --assignee-principal-type ServicePrincipal \
+    --role "Storage File Data SMB MI Admin" \
+    --scope "${STORAGE_SCOPE}"
+else
+  echo "Role assignment already exists"
+fi
+
+##############################################
+# ASSIGN CLUSTER PRINCIPAL RBAC ON STORAGE 
+##############################################
+
+CLUSTER_EXISTING_ROLE="$(az role assignment list \
+  --assignee-object-id "${CLUSTER_PRINCIPAL}" \
+  --scope "${STORAGE_SCOPE}" \
+  --query "[?roleDefinitionName=='Storage Account Contributor'].id" \
+  -o tsv)"
+
+if [[ -z "${CLUSTER_EXISTING_ROLE}" ]]; then
+  az role assignment create \
+    --assignee-object-id "${CLUSTER_PRINCIPAL}" \
     --assignee-principal-type ServicePrincipal \
     --role "Storage Account Contributor" \
     --scope "${STORAGE_SCOPE}"
@@ -123,8 +175,18 @@ else
   echo "Role assignment already exists"
 fi
 
+
+
 ############################################
-# 5. OUTPUT FOR HELM
+# 7. Configuring for SMB MI OAuth
+############################################
+
+echo "Configuring SMB Auth on storage account..."
+
+az storage account update --name ${STORAGE_ACCOUNT_NAME}   --resource-group /${STORAGE_ACCOUNT_RG}  --enable-smb-oauth true
+
+############################################
+# 6. OUTPUT FOR HELM
 ############################################
 
 echo ""
@@ -134,4 +196,5 @@ echo "Use the following values in Helm:"
 echo "--------------------------------"
 echo "workloadIdentity.clientId: ${CLIENT_ID}"
 echo "namespace: ${K8S_NAMESPACE}"
-echo "serviceAccount: ${K8S_SERVICEACCOUNT}"
+
+echo "helm install ${K8S_NAMESPACE} namespace-storage --set namespace=${K8S_NAMESPACE} --set workloadIdentity.clientId=${CLIENT_ID}  --set azureFiles.storageClass.resourceGroup=\"${STORAGE_ACCOUNT_RG}\"  --set azureFiles.storageClass.name=\"azurefile-${K8S_NAMESPACE}-wi\" --set azureFiles.storageClass.storageAccount=\"${STORAGE_ACCOUNT_NAME}\""
