@@ -1,0 +1,119 @@
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8spvcpodworkloadidentity
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sPVCPodWorkloadIdentity
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            namespaceClientIds:
+              description: Map of namespace name to expected Azure Workload Identity client ID.
+              type: object
+              additionalProperties:
+                type: string
+            excludedNamespaces:
+              description: Optional list of namespaces to skip.
+              type: array
+              items:
+                type: string
+            requirePodWorkloadIdentityLabel:
+              description: Require azure.workload.identity/use=true on PVC consuming pods.
+              type: boolean
+  targets:
+  - target: admission.k8s.gatekeeper.sh
+    rego: |
+      package k8spvcpodworkloadidentity
+
+      default require_pod_wi_label := true
+
+      require_pod_wi_label := value if {
+        value := object.get(input.parameters, "requirePodWorkloadIdentityLabel", true)
+      }
+
+      violation[{"msg": msg}] if {
+        is_pvc_pod
+        not excluded_namespace
+        sa_name := pod_service_account_name
+        not service_account_exists(sa_name)
+        msg := sprintf("Pod %q in namespace %q mounts a PVC but ServiceAccount %q does not exist", [pod_name, pod_namespace, sa_name])
+      }
+
+      violation[{"msg": msg}] if {
+        is_pvc_pod
+        not excluded_namespace
+        require_pod_wi_label
+        not pod_has_wi_label
+        msg := sprintf("Pod %q in namespace %q mounts a PVC and must set label azure.workload.identity/use=true", [pod_name, pod_namespace])
+      }
+
+      violation[{"msg": msg}] if {
+        is_pvc_pod
+        not excluded_namespace
+        sa_name := pod_service_account_name
+        service_account_exists(sa_name)
+        sa_client_id := service_account_client_id(sa_name)
+        sa_client_id == ""
+        msg := sprintf("Pod %q in namespace %q mounts a PVC but ServiceAccount %q is missing annotation azure.workload.identity/client-id", [pod_name, pod_namespace, sa_name])
+      }
+
+      violation[{"msg": msg}] if {
+        is_pvc_pod
+        not excluded_namespace
+        expected_client_id := expected_client_id_for_namespace
+        expected_client_id != ""
+        sa_name := pod_service_account_name
+        service_account_exists(sa_name)
+        sa_client_id := service_account_client_id(sa_name)
+        sa_client_id != expected_client_id
+        msg := sprintf("Pod %q in namespace %q mounts a PVC and uses ServiceAccount %q with client-id %q, expected %q", [pod_name, pod_namespace, sa_name, sa_client_id, expected_client_id])
+      }
+
+      is_pvc_pod if {
+        input.review.kind.kind == "Pod"
+        input.review.operation != "DELETE"
+        volume := input.review.object.spec.volumes[_]
+        volume.persistentVolumeClaim
+      }
+
+      excluded_namespace if {
+        namespace := pod_namespace
+        namespaces := object.get(input.parameters, "excludedNamespaces", [])
+        namespaces[_] == namespace
+      }
+
+      pod_has_wi_label if {
+        labels := object.get(input.review.object.metadata, "labels", {})
+        object.get(labels, "azure.workload.identity/use", "false") == "true"
+      }
+
+      service_account_exists(sa_name) if {
+        data.inventory.namespace[pod_namespace]["v1"]["ServiceAccount"][sa_name]
+      }
+
+      service_account_client_id(sa_name) := client_id if {
+        sa := data.inventory.namespace[pod_namespace]["v1"]["ServiceAccount"][sa_name]
+        annotations := object.get(sa.metadata, "annotations", {})
+        client_id := object.get(annotations, "azure.workload.identity/client-id", "")
+      }
+
+      expected_client_id_for_namespace := client_id if {
+        ns_map := object.get(input.parameters, "namespaceClientIds", {})
+        client_id := object.get(ns_map, pod_namespace, "")
+      }
+
+      pod_service_account_name := sa_name if {
+        sa_name := object.get(input.review.object.spec, "serviceAccountName", "default")
+      }
+
+      pod_namespace := namespace if {
+        namespace := input.review.object.metadata.namespace
+      }
+
+      pod_name := name if {
+        name := input.review.object.metadata.name
+      }

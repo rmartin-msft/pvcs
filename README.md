@@ -55,3 +55,40 @@ Finally, you should be able to exec onto the pod to verify it's writting to the 
 ```
 kubectl exec -n apps-team-1 smoke-64d98c7c4-fcpqm -- ls -l /mnt/azurefile
 ```
+
+## OPA policy to enforce PVC pod workload identity
+
+The manifests in `policies/gatekeeper` enforce that any pod in scope mounting a `PersistentVolumeClaim`:
+
+- Uses a real `ServiceAccount` in the same namespace
+- Uses `azure.workload.identity/client-id` on that `ServiceAccount`
+- Optionally sets pod label `azure.workload.identity/use=true`
+- Uses the expected client ID for that namespace
+
+Apply in this order:
+
+```bash
+kubectl apply -f policies/gatekeeper/config-sync-serviceaccounts.yaml
+kubectl apply -f policies/gatekeeper/constrainttemplate-pvcpod-workload-identity.yaml
+kubectl apply -f policies/gatekeeper/constraint-pvcpod-workload-identity.yaml
+```
+
+Update `policies/gatekeeper/constraint-pvcpod-workload-identity.yaml` with the real per-namespace IDs:
+
+```yaml
+spec:
+    parameters:
+        namespaceClientIds:
+            apps-team-1: "<client-id-for-apps-team-1>"
+            apps-team-2: "<client-id-for-apps-team-2>"
+```
+
+Quick validation:
+
+```bash
+# should be denied if service account client-id is wrong or missing
+kubectl apply -f bad-pod.yaml
+
+# check constraint violations
+kubectl get k8spvcpodworkloadidentity.constraints.gatekeeper.sh pvc-pod-workload-identity -o yaml
+```
